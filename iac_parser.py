@@ -16,25 +16,27 @@ class IaCParser:
         }
     
     def parse_terraform(self, tf_content: str) -> Dict:
-        """Parse Terraform HCL content"""
         try:
             parsed = hcl2.loads(tf_content)
             resources = parsed.get('resource', [])
-            if isinstance(resources, list) and len(resources) > 0:
-                # Merge all resource dictionaries from the list
-                merged_resources = {}
-                for resource_dict in resources:
-                    merged_resources.update(resource_dict)
-                return self._extract_resources(merged_resources)
+            
+            all_resources = {}
+            if isinstance(resources, list):
+                for resource_block in resources:
+                    if isinstance(resource_block, dict):
+                        for resource_type, instances in resource_block.items():
+                            if resource_type not in all_resources:
+                                all_resources[resource_type] = {}
+                            all_resources[resource_type].update(instances)
             elif isinstance(resources, dict):
-                return self._extract_resources(resources)
-            return {}
+                all_resources = resources
+            
+            return self._extract_resources(all_resources)
         except Exception as e:
             print(f"Error parsing Terraform: {e}")
             return {}
     
     def parse_cloudformation(self, cf_content: str) -> Dict:
-        """Parse CloudFormation YAML/JSON content"""
         try:
             if cf_content.strip().startswith('{'):
                 parsed = json.loads(cf_content)
@@ -46,33 +48,20 @@ class IaCParser:
             return {}
     
     def _extract_resources(self, resources: Dict) -> Dict:
-        """Extract resource information from Terraform"""
         extracted = {}
         for resource_type, instances in resources.items():
-            if isinstance(instances, list):
-                for i, config in enumerate(instances):
-                    resource_id = f"{resource_type}.{i}"
-                    extracted[resource_id] = {
-                        'type': resource_type,
-                        'name': f"{resource_type}_{i}",
-                        'config': config,
-                        'dependencies': self._find_dependencies(config),
-                        'metadata': self.resource_types.get(resource_type, {'category': 'other', 'cost_weight': 0.5})
-                    }
-            else:
-                for name, config in instances.items():
-                    resource_id = f"{resource_type}.{name}"
-                    extracted[resource_id] = {
-                        'type': resource_type,
-                        'name': name,
-                        'config': config,
-                        'dependencies': self._find_dependencies(config),
-                        'metadata': self.resource_types.get(resource_type, {'category': 'other', 'cost_weight': 0.5})
-                    }
+            for name, config in instances.items():
+                resource_id = f"{resource_type}.{name}"
+                extracted[resource_id] = {
+                    'type': resource_type,
+                    'name': name,
+                    'config': config,
+                    'dependencies': self._find_dependencies(config),
+                    'metadata': self.resource_types.get(resource_type, {'category': 'other', 'cost_weight': 0.5})
+                }
         return extracted
     
     def _extract_cf_resources(self, resources: Dict) -> Dict:
-        """Extract resource information from CloudFormation"""
         extracted = {}
         for name, resource in resources.items():
             resource_type = resource.get('Type', '').lower().replace('::', '_')
@@ -86,10 +75,8 @@ class IaCParser:
         return extracted
     
     def _find_dependencies(self, config: Dict) -> List[str]:
-        """Find resource dependencies in Terraform config"""
         deps = []
         config_str = str(config)
-        # Simple regex-like approach for finding references
         import re
         refs = re.findall(r'\$\{([^}]+)\}', config_str)
         for ref in refs:
@@ -98,7 +85,6 @@ class IaCParser:
         return deps
     
     def _find_cf_dependencies(self, resource: Dict) -> List[str]:
-        """Find resource dependencies in CloudFormation"""
         deps = []
         depends_on = resource.get('DependsOn', [])
         if isinstance(depends_on, str):
@@ -106,7 +92,6 @@ class IaCParser:
         elif isinstance(depends_on, list):
             deps.extend(depends_on)
         
-        # Find Ref and GetAtt dependencies
         props_str = str(resource.get('Properties', {}))
         import re
         refs = re.findall(r'"Ref":\s*"([^"]+)"', props_str)
@@ -118,14 +103,11 @@ class GraphBuilder:
         self.graph = nx.DiGraph()
     
     def build_graph(self, resources: Dict) -> nx.DiGraph:
-        """Build dependency graph from parsed resources"""
         self.graph.clear()
         
-        # Add nodes
         for resource_id, resource_data in resources.items():
             self.graph.add_node(resource_id, **resource_data)
         
-        # Add edges for dependencies
         for resource_id, resource_data in resources.items():
             for dep in resource_data.get('dependencies', []):
                 if dep in resources:
@@ -134,14 +116,13 @@ class GraphBuilder:
         return self.graph
     
     def get_node_features(self) -> List[List[float]]:
-        """Extract node features for GNN"""
         features = []
         for node in self.graph.nodes():
             node_data = self.graph.nodes[node]
             feature = [
                 node_data['metadata']['cost_weight'],
-                len(list(self.graph.predecessors(node))),  # in-degree
-                len(list(self.graph.successors(node))),    # out-degree
+                len(list(self.graph.predecessors(node))),
+                len(list(self.graph.successors(node))),
                 1.0 if node_data['metadata']['category'] == 'compute' else 0.0,
                 1.0 if node_data['metadata']['category'] == 'security' else 0.0,
             ]
@@ -149,7 +130,6 @@ class GraphBuilder:
         return features
     
     def get_edge_index(self) -> Tuple[List[int], List[int]]:
-        """Get edge indices for PyTorch Geometric"""
         node_to_idx = {node: idx for idx, node in enumerate(self.graph.nodes())}
         edge_index = [[], []]
         for edge in self.graph.edges():

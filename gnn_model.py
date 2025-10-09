@@ -4,6 +4,7 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader
 import numpy as np
 from typing import List, Tuple, Dict
+from synthetic_data_generator import SyntheticDataGenerator
 
 class IaCGNN(torch.nn.Module):
     def __init__(self, input_dim: int = 5, hidden_dim: int = 64, output_dim: int = 3):
@@ -27,9 +28,10 @@ class OptimizationPredictor:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.01)
         self.cost_patterns = self._load_cost_patterns()
         self.security_patterns = self._load_security_patterns()
+        self.data_generator = SyntheticDataGenerator()
+        self.training_accuracy = 0.0
     
     def _load_cost_patterns(self) -> Dict:
-        """Load known cost optimization patterns"""
         return {
             'oversized_instances': {
                 'pattern': 'high_cost_low_utilization',
@@ -49,7 +51,6 @@ class OptimizationPredictor:
         }
     
     def _load_security_patterns(self) -> Dict:
-        """Load known security patterns"""
         return {
             'open_security_groups': {
                 'pattern': 'sg_0.0.0.0/0',
@@ -69,59 +70,80 @@ class OptimizationPredictor:
         }
     
     def create_graph_data(self, node_features: List[List[float]], edge_index: Tuple[List[int], List[int]]) -> Data:
-        """Create PyTorch Geometric Data object"""
         x = torch.tensor(node_features, dtype=torch.float)
         edge_index_tensor = torch.tensor(edge_index, dtype=torch.long)
         return Data(x=x, edge_index=edge_index_tensor)
     
-    def predict_optimizations(self, graph_data: Data) -> Dict:
-        """Predict cost and security optimizations"""
+    def predict_optimizations(self, graph_data: Data, resources: Dict) -> Dict:
         self.model.eval()
         with torch.no_grad():
             predictions = self.model(graph_data.x, graph_data.edge_index)
         
-        # Extract predictions (cost_risk, security_risk, failure_risk)
-        cost_risks = predictions[:, 0].numpy()
-        security_risks = predictions[:, 1].numpy()
-        failure_risks = predictions[:, 2].numpy()
+        cost_predictions = torch.sigmoid(predictions[:, 0]).numpy()
         
         optimizations = {
-            'cost_optimizations': self._analyze_cost_risks(cost_risks),
-            'security_improvements': self._analyze_security_risks(security_risks),
-            'reliability_fixes': self._analyze_failure_risks(failure_risks)
+            'cost_optimizations': self._analyze_ml_predictions(cost_predictions, resources),
+            'security_improvements': self._analyze_security_patterns(resources),
+            'reliability_fixes': []
         }
         
         return optimizations
     
-    def _analyze_cost_risks(self, cost_risks: np.ndarray) -> List[Dict]:
-        """Analyze cost optimization opportunities"""
+    def _analyze_ml_predictions(self, predictions: np.ndarray, resources: Dict) -> List[Dict]:
         optimizations = []
-        high_cost_nodes = np.where(cost_risks > 0.7)[0]
+        resource_list = list(resources.keys())
         
-        for node_idx in high_cost_nodes:
-            optimizations.append({
-                'node_index': int(node_idx),
-                'type': 'cost_optimization',
-                'severity': 'high' if cost_risks[node_idx] > 0.8 else 'medium',
-                'recommendation': 'Consider rightsizing or alternative resource types',
-                'potential_savings': f"{int(cost_risks[node_idx] * 30)}%"
-            })
+        for idx, prediction in enumerate(predictions):
+            if idx < len(resource_list) and prediction > 0.5:
+                resource_id = resource_list[idx]
+                resource_data = resources[resource_id]
+                
+                if resource_data['type'] in ['aws_instance', 'aws_rds_instance']:
+                    optimizations.append({
+                        'node_index': idx,
+                        'resource_name': resource_id,
+                        'resource_type': resource_data['type'],
+                        'type': 'ml_cost_optimization',
+                        'severity': 'high' if prediction > 0.8 else 'medium',
+                        'recommendation': f'ML model suggests optimization (confidence: {prediction:.1%})',
+                        'ml_confidence': f'{prediction:.1%}'
+                    })
         
         return optimizations
     
-    def _analyze_security_risks(self, security_risks: np.ndarray) -> List[Dict]:
-        """Analyze security improvement opportunities"""
+    def _analyze_security_patterns(self, resources: Dict) -> List[Dict]:
         improvements = []
-        high_risk_nodes = np.where(security_risks > 0.6)[0]
         
-        for node_idx in high_risk_nodes:
-            improvements.append({
-                'node_index': int(node_idx),
-                'type': 'security_improvement',
-                'severity': 'critical' if security_risks[node_idx] > 0.8 else 'high',
-                'recommendation': 'Review security group rules and access policies',
-                'risk_level': f"{int(security_risks[node_idx] * 100)}%"
-            })
+        for resource_id, resource_data in resources.items():
+            config = resource_data.get('config', {})
+            
+            if resource_data['type'] == 'aws_security_group':
+                ingress_rules = config.get('ingress', [])
+                if not isinstance(ingress_rules, list):
+                    ingress_rules = [ingress_rules]
+                
+                for rule in ingress_rules:
+                    cidr_blocks = rule.get('cidr_blocks', [])
+                    if '0.0.0.0/0' in cidr_blocks:
+                        improvements.append({
+                            'resource_name': resource_id,
+                            'resource_type': resource_data['type'],
+                            'type': 'security_improvement',
+                            'severity': 'high',
+                            'recommendation': 'Restrict overly permissive security group rules',
+                            'issue': 'Open to all IPs (0.0.0.0/0)'
+                        })
+            
+            elif resource_data['type'] == 'aws_rds_instance':
+                if not config.get('storage_encrypted', True):
+                    improvements.append({
+                        'resource_name': resource_id,
+                        'resource_type': resource_data['type'],
+                        'type': 'security_improvement',
+                        'severity': 'medium',
+                        'recommendation': 'Enable storage encryption',
+                        'issue': 'Storage not encrypted'
+                    })
         
         return improvements
     
@@ -142,33 +164,45 @@ class OptimizationPredictor:
         return fixes
     
     def train_on_synthetic_data(self, num_epochs: int = 100):
-        """Train model on synthetic data (placeholder for real training data)"""
         self.model.train()
+        total_correct = 0
+        total_samples = 0
         
         for epoch in range(num_epochs):
-            # Generate synthetic training data
-            synthetic_data = self._generate_synthetic_data()
+            batch_scenarios = self.data_generator.generate_training_batch(batch_size=16)
+            epoch_loss = 0.0
+            epoch_correct = 0
+            epoch_samples = 0
             
-            self.optimizer.zero_grad()
-            predictions = self.model(synthetic_data.x, synthetic_data.edge_index)
+            for scenario in batch_scenarios:
+                graph_data, labels = self.data_generator.scenario_to_graph_data(scenario)
+                
+                self.optimizer.zero_grad()
+                predictions = self.model(graph_data.x, graph_data.edge_index)
+                
+                cost_predictions = predictions[:, 0]
+                labels_tensor = torch.tensor(labels, dtype=torch.float)
+                
+                loss = F.binary_cross_entropy_with_logits(cost_predictions, labels_tensor)
+                loss.backward()
+                self.optimizer.step()
+                
+                epoch_loss += loss.item()
+                
+                predicted_labels = (torch.sigmoid(cost_predictions) > 0.5).float()
+                correct = (predicted_labels == labels_tensor).sum().item()
+                epoch_correct += correct
+                epoch_samples += len(labels)
             
-            # Synthetic labels (in practice, use real optimization outcomes)
-            labels = torch.randn(predictions.size())
-            loss = F.mse_loss(predictions, labels)
-            
-            loss.backward()
-            self.optimizer.step()
+            total_correct += epoch_correct
+            total_samples += epoch_samples
             
             if epoch % 20 == 0:
-                print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
+                accuracy = epoch_correct / epoch_samples if epoch_samples > 0 else 0
+                print(f"Epoch {epoch}, Loss: {epoch_loss/len(batch_scenarios):.4f}, Accuracy: {accuracy:.3f}")
+        
+        self.training_accuracy = total_correct / total_samples if total_samples > 0 else 0
+        print(f"\nFinal Training Accuracy: {self.training_accuracy:.3f}")
     
-    def _generate_synthetic_data(self) -> Data:
-        """Generate synthetic graph data for training"""
-        num_nodes = np.random.randint(5, 20)
-        node_features = torch.randn(num_nodes, 5)
-        
-        # Create random edges
-        num_edges = np.random.randint(num_nodes, num_nodes * 2)
-        edge_index = torch.randint(0, num_nodes, (2, num_edges))
-        
-        return Data(x=node_features, edge_index=edge_index)
+    def get_model_accuracy(self) -> float:
+        return self.training_accuracy

@@ -12,37 +12,25 @@ class IaCOptimizer:
         self.pricing = AWSPricing()
         
     def analyze_terraform(self, tf_content: str) -> Dict:
-        """Analyze Terraform configuration and suggest optimizations"""
         resources = self.parser.parse_terraform(tf_content)
         return self._analyze_resources(resources)
     
     def analyze_cloudformation(self, cf_content: str) -> Dict:
-        """Analyze CloudFormation template and suggest optimizations"""
         resources = self.parser.parse_cloudformation(cf_content)
         return self._analyze_resources(resources)
     
     def _analyze_resources(self, resources: Dict) -> Dict:
-        """Core analysis logic"""
         if not resources:
             return {"error": "No resources found or parsing failed"}
         
-        # Build dependency graph
         graph = self.graph_builder.build_graph(resources)
-        
-        # Extract features for GNN
         node_features = self.graph_builder.get_node_features()
         edge_index = self.graph_builder.get_edge_index()
-        
-        # Create graph data
         graph_data = self.predictor.create_graph_data(node_features, edge_index)
         
-        # Calculate costs first
         cost_analysis = self._calculate_costs(resources)
+        optimizations = self.predictor.predict_optimizations(graph_data, resources)
         
-        # Get predictions
-        optimizations = self.predictor.predict_optimizations(graph_data)
-        
-        # Add real cost optimizations from pricing analysis
         real_cost_opts = []
         for item in cost_analysis['breakdown']:
             if item['rightsizing']:
@@ -56,10 +44,8 @@ class IaCOptimizer:
                     'potential_savings': f"${rs['monthly_savings']}/month ({rs['savings_percentage']}%)"
                 })
         
-        # Merge real cost optimizations with GNN predictions
         optimizations['cost_optimizations'].extend(real_cost_opts)
         
-        # Add resource context to GNN predictions
         resource_list = list(resources.keys())
         for opt_type in optimizations:
             for opt in optimizations[opt_type]:
@@ -67,12 +53,8 @@ class IaCOptimizer:
                     opt['resource_name'] = resource_list[opt['node_index']]
                     opt['resource_type'] = resources[resource_list[opt['node_index']]]['type']
         
-
-        
-        # Calculate optimized cost
         optimized_cost = cost_analysis['total_cost'] - cost_analysis['total_savings']
         
-        # Add graph analysis
         analysis_result = {
             'summary': {
                 'total_resources': len(resources),
@@ -91,7 +73,6 @@ class IaCOptimizer:
         return analysis_result
     
     def _calculate_costs(self, resources: Dict) -> Dict:
-        """Calculate infrastructure costs with optimization suggestions"""
         total_cost = 0.0
         total_savings = 0.0
         breakdown = []
@@ -103,7 +84,6 @@ class IaCOptimizer:
             cost = self.pricing.calculate_resource_cost(resource_type, config)
             total_cost += cost
             
-            # Get rightsizing recommendation
             rightsizing = self.pricing.get_rightsizing_recommendation(resource_type, config)
             if rightsizing:
                 total_savings += rightsizing['monthly_savings']
@@ -122,7 +102,6 @@ class IaCOptimizer:
         }
     
     def _calculate_graph_metrics(self, graph) -> Dict:
-        """Calculate graph complexity metrics"""
         import networkx as nx
         
         metrics = {
@@ -141,12 +120,10 @@ class IaCOptimizer:
         return metrics
     
     def _generate_recommendations(self, optimizations: Dict) -> List[str]:
-        """Generate high-level recommendations"""
         recommendations = []
         
         cost_opts = len(optimizations.get('cost_optimizations', []))
         security_opts = len(optimizations.get('security_improvements', []))
-        reliability_opts = len(optimizations.get('reliability_fixes', []))
         
         if cost_opts > 0:
             recommendations.append(f"Found {cost_opts} cost optimization opportunities")
@@ -154,19 +131,16 @@ class IaCOptimizer:
         if security_opts > 0:
             recommendations.append(f"Identified {security_opts} security improvements needed")
         
-        if reliability_opts > 0:
-            recommendations.append(f"Detected {reliability_opts} reliability risks to address")
-        
         if not recommendations:
             recommendations.append("Infrastructure appears well-optimized")
         
         return recommendations
     
     def train_model(self):
-        """Train the GNN model (placeholder for production training)"""
-        print("Training GNN model on synthetic data...")
-        self.predictor.train_on_synthetic_data(num_epochs=50)
-        print("Training completed")
+        print("Training GNN model on realistic synthetic data...")
+        self.predictor.train_on_synthetic_data(num_epochs=100)
+        accuracy = self.predictor.get_model_accuracy()
+        print(f"Training completed - Model accuracy: {accuracy:.1%}")
 
 def main():
     """Example usage"""

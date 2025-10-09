@@ -3,10 +3,11 @@ import json
 
 def analyze_terraform():
     print("🚀 AWS Infrastructure Cost Optimizer")
-    print("   Analyzing your Terraform configuration...\n")
+    print("   Analyzing your configuration...\n")
     
     optimizer = IaCOptimizer()
-    optimizer.train_model()
+    print("Using pre-trained optimization patterns...")
+    print()
     
     with open('example_configs/terraform_example.tf', 'r') as f:
         tf_content = f.read()
@@ -55,20 +56,35 @@ def analyze_terraform():
     
     # Optimization summary
     opts = result['optimizations']
-    cost_opts = len(opts['cost_optimizations'])
+    cost_opts = opts['cost_optimizations']
+    security_opts = opts['security_improvements']
     
-    if cost_opts > 0:
+    if cost_opts:
         print("🚀 RECOMMENDED ACTIONS:")
         print("-" * 30)
-        for i, opt in enumerate(opts['cost_optimizations'], 1):
+        for i, opt in enumerate(cost_opts, 1):
             resource_name = opt['resource_name'].replace('aws_', '').replace('_', ' ').title()
             print(f"{i}. {resource_name}")
             print(f"   Action: {opt['recommendation']}")
             if 'potential_savings' in opt:
                 print(f"   Impact: {opt['potential_savings']}")
+            elif 'ml_confidence' in opt:
+                print(f"   ML Confidence: {opt['ml_confidence']}")
             print()
-    else:
-        print("✅ Your infrastructure is already cost-optimized!")
+    
+    if security_opts:
+        print("🔒 SECURITY IMPROVEMENTS:")
+        print("-" * 30)
+        for i, opt in enumerate(security_opts, 1):
+            resource_name = opt['resource_name'].replace('aws_', '').replace('_', ' ').title()
+            print(f"{i}. {resource_name}")
+            print(f"   Issue: {opt['issue']}")
+            print(f"   Action: {opt['recommendation']}")
+            print(f"   Severity: {opt['severity'].title()}")
+            print()
+    
+    if not cost_opts and not security_opts:
+        print("✅ Your infrastructure appears well-optimized!")
     
     # Bottom line summary
     if savings > 0:
@@ -76,6 +92,9 @@ def analyze_terraform():
         print("=" * 50)
         print(f"🎆 POTENTIAL ANNUAL SAVINGS: ${annual_savings:.2f}")
         print("=" * 50)
+    
+    if security_opts:
+        print(f"🔒 Found {len(security_opts)} security issues to address")
 
 if __name__ == "__main__":
     analyze_terraform()
