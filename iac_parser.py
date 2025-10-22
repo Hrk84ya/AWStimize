@@ -7,12 +7,60 @@ import networkx as nx
 class IaCParser:
     def __init__(self):
         self.resource_types = {
+            # Compute Services
             'aws_instance': {'category': 'compute', 'cost_weight': 0.8},
+            'aws_lambda_function': {'category': 'compute', 'cost_weight': 0.4},
+            'aws_ecs_cluster': {'category': 'compute', 'cost_weight': 0.1},
+            'aws_ecs_service': {'category': 'compute', 'cost_weight': 0.6},
+            'aws_ecs_task_definition': {'category': 'compute', 'cost_weight': 0.7},
+            'aws_eks_cluster': {'category': 'compute', 'cost_weight': 0.9},
+            'aws_eks_node_group': {'category': 'compute', 'cost_weight': 0.8},
+            
+            # Database Services
             'aws_rds_instance': {'category': 'database', 'cost_weight': 0.9},
+            'aws_dynamodb_table': {'category': 'database', 'cost_weight': 0.6},
+            'aws_elasticache_cluster': {'category': 'database', 'cost_weight': 0.7},
+            'aws_elasticache_replication_group': {'category': 'database', 'cost_weight': 0.8},
+            
+            # Storage Services
             'aws_s3_bucket': {'category': 'storage', 'cost_weight': 0.3},
-            'aws_security_group': {'category': 'security', 'cost_weight': 0.1},
+            'aws_ebs_volume': {'category': 'storage', 'cost_weight': 0.4},
+            'aws_efs_file_system': {'category': 'storage', 'cost_weight': 0.5},
+            
+            # Network Services
             'aws_vpc': {'category': 'network', 'cost_weight': 0.2},
             'aws_subnet': {'category': 'network', 'cost_weight': 0.1},
+            'aws_security_group': {'category': 'security', 'cost_weight': 0.1},
+            'aws_lb': {'category': 'network', 'cost_weight': 0.6},
+            'aws_alb': {'category': 'network', 'cost_weight': 0.6},
+            'aws_elb': {'category': 'network', 'cost_weight': 0.5},
+            'aws_nat_gateway': {'category': 'network', 'cost_weight': 0.7},
+            'aws_eip': {'category': 'network', 'cost_weight': 0.2},
+            'aws_internet_gateway': {'category': 'network', 'cost_weight': 0.0},
+            'aws_route_table': {'category': 'network', 'cost_weight': 0.0},
+            
+            # API and Application Services
+            'aws_api_gateway_rest_api': {'category': 'api', 'cost_weight': 0.5},
+            'aws_apigatewayv2_api': {'category': 'api', 'cost_weight': 0.5},
+            'aws_api_gateway_deployment': {'category': 'api', 'cost_weight': 0.1},
+            'aws_api_gateway_stage': {'category': 'api', 'cost_weight': 0.1},
+            
+            # Content Delivery
+            'aws_cloudfront_distribution': {'category': 'cdn', 'cost_weight': 0.6},
+            
+            # Monitoring and Management
+            'aws_cloudwatch_log_group': {'category': 'monitoring', 'cost_weight': 0.2},
+            'aws_cloudwatch_metric_alarm': {'category': 'monitoring', 'cost_weight': 0.1},
+            
+            # IAM and Security
+            'aws_iam_role': {'category': 'security', 'cost_weight': 0.0},
+            'aws_iam_policy': {'category': 'security', 'cost_weight': 0.0},
+            'aws_iam_instance_profile': {'category': 'security', 'cost_weight': 0.0},
+            
+            # Other Services
+            'aws_sns_topic': {'category': 'messaging', 'cost_weight': 0.2},
+            'aws_sqs_queue': {'category': 'messaging', 'cost_weight': 0.2},
+            'aws_kinesis_stream': {'category': 'streaming', 'cost_weight': 0.6},
         }
     
     def parse_terraform(self, tf_content: str) -> Dict:

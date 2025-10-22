@@ -9,8 +9,15 @@ def analyze_terraform():
     print("Using pre-trained optimization patterns...")
     print()
     
-    with open('example_configs/terraform_example.tf', 'r') as f:
-        tf_content = f.read()
+    # Try comprehensive example first, fall back to simple example
+    try:
+        with open('example_configs/comprehensive_terraform.tf', 'r') as f:
+            tf_content = f.read()
+        print("📊 Analyzing comprehensive AWS infrastructure...")
+    except FileNotFoundError:
+        with open('example_configs/terraform_example.tf', 'r') as f:
+            tf_content = f.read()
+        print("📊 Analyzing basic AWS infrastructure...")
     
     result = optimizer.analyze_terraform(tf_content)
     
@@ -42,16 +49,30 @@ def analyze_terraform():
     print(f"   • Complexity score: {summary['complexity_score']:.1f}/5.0")
     print()
     
-    # Show only resources with costs > 0
-    print("💰 Resource Costs:")
+    # Group resources by category and show costs
+    print("💰 Resource Costs by Category:")
+    
+    # Group resources by service type
+    service_costs = {}
     for item in result['cost_breakdown']:
         if item['monthly_cost'] > 0:
-            resource_name = item['resource'].replace('aws_', '').replace('_', ' ').title()
-            print(f"   • {resource_name}: ${item['monthly_cost']}")
+            service_type = item['type'].replace('aws_', '').split('_')[0].title()
+            if service_type not in service_costs:
+                service_costs[service_type] = []
+            service_costs[service_type].append(item)
+    
+    # Display grouped costs
+    for service_type, resources in service_costs.items():
+        total_service_cost = sum(r['monthly_cost'] for r in resources)
+        print(f"\n   📦 {service_type} Services: ${total_service_cost:.2f}/month")
+        
+        for item in resources:
+            resource_name = item['resource'].split('.')[-1].replace('_', '-')
+            print(f"      • {resource_name}: ${item['monthly_cost']:.2f}")
             
             if item['rightsizing']:
                 rs = item['rightsizing']
-                print(f"     💡 Optimize: Switch to {rs['suggested_type']} → Save ${rs['monthly_savings']:.2f}/month")
+                print(f"        💡 Optimize: {rs['suggested_type']} → Save ${rs['monthly_savings']:.2f}/month")
     print()
     
     # Optimization summary
